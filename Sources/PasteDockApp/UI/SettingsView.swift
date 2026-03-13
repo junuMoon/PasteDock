@@ -4,67 +4,51 @@ struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                sectionTitle("General")
-
-                settingsRow(
-                    title: "Shortcut",
-                    value: appModel.settings.shortcutPreset.title,
-                    buttonTitle: "Cycle"
-                ) {
-                    appModel.updateShortcutPreset(nextShortcutPreset)
+        Form {
+            Section("General") {
+                Picker("Shortcut", selection: shortcutPresetBinding) {
+                    ForEach(KeyboardShortcutPreset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
                 }
 
-                settingsRow(
-                    title: "Default submit",
-                    value: appModel.settings.defaultSubmitMode.title,
-                    buttonTitle: "Toggle"
-                ) {
-                    appModel.updateDefaultSubmitMode(nextSubmitMode)
+                Toggle("Pause capture", isOn: capturePausedBinding)
+
+                Stepper(value: historyLimitBinding, in: 10...1000, step: 10) {
+                    settingsValueRow("Max history items", value: "\(appModel.settings.maxHistoryItems)")
                 }
 
-                settingsRow(
-                    title: "Max history items",
-                    value: "\(appModel.settings.maxHistoryItems)",
-                    buttonTitle: "+10"
-                ) {
-                    appModel.updateHistoryLimit(appModel.settings.maxHistoryItems + 10)
+                Stepper(value: retentionDaysBinding, in: 1...365, step: 1) {
+                    settingsValueRow("Retention days", value: "\(appModel.settings.retentionDays)")
                 }
+            }
 
-                settingsRow(
-                    title: "Retention days",
-                    value: "\(appModel.settings.retentionDays)",
-                    buttonTitle: "+1"
-                ) {
-                    appModel.updateRetentionDays(appModel.settings.retentionDays + 1)
+            Section("Privacy") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Excluded app bundle identifiers")
+                        .font(.system(size: 12, weight: .semibold))
+
+                    TextEditor(text: excludedAppsBinding)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(minHeight: 160)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+
+                    Text("One bundle identifier per line. Clipboard changes from these apps will not be stored.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.vertical, 4)
+            }
 
-                Button(appModel.pauseCaptureTitle) {
-                    appModel.toggleCapturePaused()
-                }
-
-                Divider()
-
-                sectionTitle("Privacy")
-                Text("Excluded app bundle identifiers")
-                    .font(.system(size: 12, weight: .semibold))
-                TextEditor(text: excludedAppsBinding)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(minHeight: 160)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                Text("One bundle identifier per line. Clipboard changes from these apps will not be stored.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
-                sectionTitle("Accessibility")
-                Text(appModel.accessibilityTrusted ? "Access granted" : "Required for Paste now")
-                    .foregroundStyle(appModel.accessibilityTrusted ? .green : .secondary)
+            Section("Accessibility") {
+                settingsValueRow(
+                    "Status",
+                    value: appModel.accessibilityTrusted ? "Granted" : "Required for Paste now"
+                )
+                .foregroundStyle(appModel.accessibilityTrusted ? .green : .secondary)
 
                 if !appModel.accessibilityTrusted {
                     Button("Request Accessibility Access") {
@@ -72,18 +56,20 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("Paste now requires PasteDock to activate the previous app and send Cmd+V. Without access, the app falls back to copy-only.")
+                Text("Paste now returns focus to the previous app and sends Paste. Without access, PasteDock falls back to copy only.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-
-                Divider()
-
-                sectionTitle("Runtime")
-                Text("Launched \(appModel.launchDate.formatted(date: .abbreviated, time: .standard))")
-                    .foregroundStyle(.secondary)
             }
-            .padding(24)
+
+            Section("Runtime") {
+                settingsValueRow(
+                    "Launched",
+                    value: appModel.launchDate.formatted(date: .abbreviated, time: .standard)
+                )
+            }
         }
+        .formStyle(.grouped)
+        .padding(24)
     }
 
     private var excludedAppsBinding: Binding<String> {
@@ -93,41 +79,40 @@ struct SettingsView: View {
         )
     }
 
-    private var nextShortcutPreset: KeyboardShortcutPreset {
-        let allCases = KeyboardShortcutPreset.allCases
-        guard let index = allCases.firstIndex(of: appModel.settings.shortcutPreset) else {
-            return allCases[0]
-        }
-
-        return allCases[(index + 1) % allCases.count]
+    private var shortcutPresetBinding: Binding<KeyboardShortcutPreset> {
+        Binding(
+            get: { appModel.settings.shortcutPreset },
+            set: { appModel.updateShortcutPreset($0) }
+        )
     }
 
-    private var nextSubmitMode: SubmitMode {
-        switch appModel.settings.defaultSubmitMode {
-        case .pasteNow:
-            .copyOnly
-        case .copyOnly:
-            .pasteNow
-        }
+    private var capturePausedBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.settings.capturePaused },
+            set: { appModel.setCapturePaused($0) }
+        )
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.title3.weight(.semibold))
+    private var historyLimitBinding: Binding<Int> {
+        Binding(
+            get: { appModel.settings.maxHistoryItems },
+            set: { appModel.updateHistoryLimit($0) }
+        )
     }
 
-    private func settingsRow(
-        title: String,
-        value: String,
-        buttonTitle: String,
-        action: @escaping () -> Void
-    ) -> some View {
+    private var retentionDaysBinding: Binding<Int> {
+        Binding(
+            get: { appModel.settings.retentionDays },
+            set: { appModel.updateRetentionDays($0) }
+        )
+    }
+
+    private func settingsValueRow(_ title: String, value: String) -> some View {
         HStack {
             Text(title)
             Spacer()
             Text(value)
                 .foregroundStyle(.secondary)
-            Button(buttonTitle, action: action)
         }
     }
 }

@@ -87,6 +87,7 @@ final class AppModel: ObservableObject {
            activeApp.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             lastKnownExternalApplication = activeApp
         }
+        lastActionMessage = nil
         searchQuery = ""
         selectFirstFilteredItem()
         panelPresentationID = UUID()
@@ -178,7 +179,11 @@ final class AppModel: ObservableObject {
     }
 
     func toggleCapturePaused() {
-        settings.capturePaused.toggle()
+        setCapturePaused(!settings.capturePaused)
+    }
+
+    func setCapturePaused(_ isPaused: Bool) {
+        settings.capturePaused = isPaused
         persistState()
     }
 
@@ -200,11 +205,6 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
-    func updateDefaultSubmitMode(_ mode: SubmitMode) {
-        settings.defaultSubmitMode = mode
-        persistState()
-    }
-
     func requestAccessibilityAccess() {
         accessibilityTrusted = accessibilityService.isTrusted(prompt: true)
     }
@@ -215,6 +215,12 @@ final class AppModel: ObservableObject {
 
     func notePanelDidBecomeKey() {
         selectFirstFilteredItem()
+    }
+
+    deinit {
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+        }
     }
 
     private func configureHotKey() {
@@ -333,7 +339,7 @@ final class AppModel: ObservableObject {
 
         pruneAndSortItems()
         persistState()
-        selectedItemID = items.first?.id
+        ensureValidSelection()
     }
 
     private func makeClipboardItem(

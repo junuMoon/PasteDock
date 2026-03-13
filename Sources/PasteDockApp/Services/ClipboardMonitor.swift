@@ -5,6 +5,7 @@ import Foundation
 final class ClipboardMonitor {
     var onChange: ((ClipboardCapturedContent) -> Void)?
 
+    private let pollInterval: TimeInterval = 0.35
     private var timer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
 
@@ -13,11 +14,16 @@ final class ClipboardMonitor {
             return
         }
 
-        timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.poll()
             }
         }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
     }
 
     private func poll() {

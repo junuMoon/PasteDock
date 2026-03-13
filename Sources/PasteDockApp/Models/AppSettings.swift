@@ -22,5 +22,4 @@ struct AppSettings: Codable {
     var capturePaused = false
     var excludedBundleIDs: [String] = []
     var shortcutPreset: KeyboardShortcutPreset = .controlS
-    var defaultSubmitMode: SubmitMode = .pasteNow
 }
