@@ -64,21 +64,36 @@ struct QuickPanelView: View {
             if appModel.filteredItems.isEmpty {
                 emptyListState
             } else {
-                List(selection: $appModel.selectedItemID) {
-                    ForEach(appModel.filteredItems) { item in
-                        ClipboardListItemView(
-                            item: item,
-                            isSelected: appModel.selectedItemID == item.id
-                        )
-                        .tag(item.id)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            appModel.selectItem(item)
+                ScrollViewReader { proxy in
+                    List(selection: $appModel.selectedItemID) {
+                        ForEach(appModel.filteredItems) { item in
+                            ClipboardListItemView(
+                                item: item,
+                                isSelected: appModel.selectedItemID == item.id
+                            )
+                            .id(item.id)
+                            .tag(item.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                appModel.selectItem(item)
+                            }
+                            .onTapGesture(count: 2) {
+                                appModel.selectItem(item)
+                                appModel.submitSelectedItem(mode: .pasteNow)
+                            }
                         }
-                        .onTapGesture(count: 2) {
-                            appModel.selectItem(item)
-                            appModel.submitSelectedItem(mode: .pasteNow)
-                        }
+                    }
+                    .onAppear {
+                        scrollSelection(into: proxy, animated: false)
+                    }
+                    .onChange(of: appModel.selectedItemID) { _, _ in
+                        scrollSelection(into: proxy, animated: true)
+                    }
+                    .onChange(of: appModel.panelPresentationID) { _, _ in
+                        scrollSelection(into: proxy, animated: false)
+                    }
+                    .onChange(of: appModel.filteredItems.map(\.id)) { _, _ in
+                        scrollSelection(into: proxy, animated: false)
                     }
                 }
                 .listStyle(.inset)
@@ -211,6 +226,22 @@ struct QuickPanelView: View {
     private func focusSearchField() {
         DispatchQueue.main.async {
             isSearchFocused = true
+        }
+    }
+
+    private func scrollSelection(into proxy: ScrollViewProxy, animated: Bool) {
+        guard let selectedItemID = appModel.selectedItemID else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    proxy.scrollTo(selectedItemID, anchor: .center)
+                }
+            } else {
+                proxy.scrollTo(selectedItemID, anchor: .center)
+            }
         }
     }
 }
