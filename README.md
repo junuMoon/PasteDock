@@ -2,4 +2,6 @@
 
 Clipboard history app specification and project notes.
 
-Primary spec: `docs/spec.md`
+Primary docs:
+- `docs/spec.md`
+- `docs/ux-spec.md`
