@@ -138,15 +138,21 @@ final class AppModel: ObservableObject {
 
         if mode == .pasteNow {
             let targetApp = lastKnownExternalApplication
-            let pasted = pasteExecutor.paste(into: targetApp)
-            accessibilityTrusted = accessibilityService.isTrusted(prompt: false)
+            lastActionMessage = "Pasting..."
 
-            if pasted {
-                lastActionMessage = "Pasted into the active app."
-            } else if accessibilityTrusted {
-                lastActionMessage = "Copied to clipboard. Press Cmd+V manually."
-            } else {
-                lastActionMessage = "Copied to clipboard. Grant Accessibility to enable Paste now."
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+
+                let pasted = await pasteExecutor.paste(into: targetApp)
+                accessibilityTrusted = accessibilityService.isTrusted(prompt: false)
+
+                if pasted {
+                    lastActionMessage = "Pasted into the active app."
+                } else if accessibilityTrusted {
+                    lastActionMessage = "Copied to clipboard. Press Cmd+V manually."
+                } else {
+                    lastActionMessage = "Copied to clipboard. Grant Accessibility to enable Paste now."
+                }
             }
         } else {
             lastActionMessage = "Copied to clipboard."
