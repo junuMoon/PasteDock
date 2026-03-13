@@ -93,6 +93,14 @@ final class AppModel: ObservableObject {
         quickPanelController.show()
     }
 
+    func toggleQuickPanel() {
+        if quickPanelController.isVisible {
+            closeQuickPanel()
+        } else {
+            openQuickPanel()
+        }
+    }
+
     func closeQuickPanel() {
         quickPanelController.close()
     }
@@ -199,7 +207,7 @@ final class AppModel: ObservableObject {
     private func configureHotKey() {
         hotKeyService.onHotKeyPressed = { [weak self] in
             Task { @MainActor in
-                self?.openQuickPanel()
+                self?.toggleQuickPanel()
             }
         }
         hotKeyService.register(shortcut: settings.shortcutPreset)

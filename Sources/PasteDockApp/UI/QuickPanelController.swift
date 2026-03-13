@@ -38,6 +38,10 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
+    var isVisible: Bool {
+        panel.isVisible
+    }
+
     func show() {
         positionPanel()
         appModel.notePanelDidBecomeKey()
