@@ -18,7 +18,7 @@ final class HotKeyService {
     func register(shortcut: KeyboardShortcutPreset) {
         unregister()
 
-        var hotKeyID = EventHotKeyID(signature: OSType(0x50444F43), id: UInt32(1))
+        let hotKeyID = EventHotKeyID(signature: OSType(0x50444F43), id: UInt32(1))
         RegisterEventHotKey(
             shortcut.keyCode,
             shortcut.carbonModifiers,
