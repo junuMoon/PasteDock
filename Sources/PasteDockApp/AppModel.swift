@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
         settings = state.settings
         accessibilityTrusted = accessibilityService.isTrusted(prompt: false)
 
+        migrateShortcutPreferenceIfNeeded()
         pruneAndSortItems()
         registerWorkspaceObserver()
         configureHotKey()
@@ -213,6 +214,12 @@ final class AppModel: ObservableObject {
             }
         }
         clipboardMonitor.start()
+    }
+
+    private func migrateShortcutPreferenceIfNeeded() {
+        if settings.shortcutPreset == .commandShiftV {
+            settings.shortcutPreset = .controlS
+        }
     }
 
     private func ingestClipboardChange(content: String) {

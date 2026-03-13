@@ -2,6 +2,7 @@ import Carbon.HIToolbox
 import Foundation
 
 enum KeyboardShortcutPreset: String, Codable, CaseIterable, Identifiable {
+    case controlS
     case commandShiftV
     case commandOptionV
     case commandShiftSpace
@@ -10,6 +11,8 @@ enum KeyboardShortcutPreset: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .controlS:
+            "Ctrl+S"
         case .commandShiftV:
             "Cmd+Shift+V"
         case .commandOptionV:
@@ -21,6 +24,8 @@ enum KeyboardShortcutPreset: String, Codable, CaseIterable, Identifiable {
 
     var keyCode: UInt32 {
         switch self {
+        case .controlS:
+            1
         case .commandShiftV, .commandOptionV:
             9
         case .commandShiftSpace:
@@ -30,6 +35,8 @@ enum KeyboardShortcutPreset: String, Codable, CaseIterable, Identifiable {
 
     var carbonModifiers: UInt32 {
         switch self {
+        case .controlS:
+            UInt32(controlKey)
         case .commandShiftV:
             UInt32(cmdKey | shiftKey)
         case .commandOptionV:
