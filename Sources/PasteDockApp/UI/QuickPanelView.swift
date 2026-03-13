@@ -169,7 +169,7 @@ struct QuickPanelView: View {
         HStack(spacing: 18) {
             Text("Enter Paste now")
             Text("Cmd+Enter Copy only")
-            Text("Delete Remove item")
+            Text("Cmd+Delete Remove item")
             Spacer()
             if let lastActionMessage = appModel.lastActionMessage {
                 Text(lastActionMessage)
