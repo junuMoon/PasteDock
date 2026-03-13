@@ -25,3 +25,20 @@ swift run PasteDock
 ```
 
 The app launches as a menu bar utility. Open the quick panel from the menu bar or the configured global shortcut.
+
+## Xcode App Workflow
+
+This repo now also works like `~/Workspace/Glacier`.
+
+```bash
+xcodegen generate
+open PasteDock.xcodeproj
+```
+
+Or build and launch the `.app` directly:
+
+```bash
+./scripts/run-app.sh
+```
+
+That produces `build/Build/Products/Debug/PasteDock.app` and opens it.
