@@ -47,9 +47,7 @@ final class AppModel: ObservableObject {
 
         let loweredQuery = query.localizedLowercase
         return items.filter { item in
-            item.content.localizedLowercase.contains(loweredQuery)
-                || item.sourceAppName?.localizedLowercase.contains(loweredQuery) == true
-                || item.sourceBundleID?.localizedLowercase.contains(loweredQuery) == true
+            item.searchableText.localizedLowercase.contains(loweredQuery)
         }
     }
 
@@ -126,7 +124,7 @@ final class AppModel: ObservableObject {
         }
 
         let now = Date()
-        pasteboardService.setString(item.content)
+        pasteboardService.setItem(item)
         updateItemUsage(itemID: item.id, now: now, directPaste: mode == .pasteNow)
         closeQuickPanel()
 
@@ -208,7 +206,7 @@ final class AppModel: ObservableObject {
     }
 
     private func configureClipboardMonitor() {
-        clipboardMonitor.onTextChange = { [weak self] content in
+        clipboardMonitor.onChange = { [weak self] content in
             Task { @MainActor in
                 self?.ingestClipboardChange(content: content)
             }
@@ -222,13 +220,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func ingestClipboardChange(content: String) {
-        let normalized = content.trimmingCharacters(in: .newlines)
-        guard !normalized.isEmpty else {
+    private func ingestClipboardChange(content: ClipboardCapturedContent) {
+        guard let normalized = normalizeClipboardContent(content) else {
             return
         }
 
-        if pasteboardService.consumeProgrammaticCopyIfNeeded(content: normalized) {
+        if pasteboardService.consumeProgrammaticCopyIfNeeded(contentHash: normalized.contentHash) {
             return
         }
 
@@ -243,6 +240,24 @@ final class AppModel: ObservableObject {
 
         let now = Date()
         upsertItem(content: normalized, sourceApp: sourceApp, now: now)
+    }
+
+    private func normalizeClipboardContent(_ content: ClipboardCapturedContent) -> ClipboardCapturedContent? {
+        switch content {
+        case .text(let text):
+            let normalized = text.trimmingCharacters(in: .newlines)
+            guard !normalized.isEmpty else {
+                return nil
+            }
+
+            return .text(normalized)
+        case .image(let pngData, let width, let height):
+            guard !pngData.isEmpty else {
+                return nil
+            }
+
+            return .image(pngData: pngData, width: width, height: height)
+        }
     }
 
     private func isExcludedSourceApplication(_ app: NSRunningApplication?) -> Bool {
@@ -261,25 +276,21 @@ final class AppModel: ObservableObject {
         return settings.excludedBundleIDs.contains(bundleID)
     }
 
-    private func upsertItem(content: String, sourceApp: NSRunningApplication?, now: Date) {
-        let hash = ClipboardItem.makeHash(for: content)
+    private func upsertItem(content: ClipboardCapturedContent, sourceApp: NSRunningApplication?, now: Date) {
+        let hash = content.contentHash
 
         if let index = items.firstIndex(where: { $0.contentHash == hash }) {
-            items[index].content = content
+            apply(content: content, to: &items[index])
             items[index].lastCopiedAt = now
             items[index].sourceAppName = sourceApp?.localizedName ?? items[index].sourceAppName
             items[index].sourceBundleID = sourceApp?.bundleIdentifier ?? items[index].sourceBundleID
         } else {
             items.append(
-                ClipboardItem(
-                    content: content,
-                    sourceAppName: sourceApp?.localizedName,
-                    sourceBundleID: sourceApp?.bundleIdentifier,
-                    firstCopiedAt: now,
-                    lastCopiedAt: now,
-                    lastPastedViaPasteDockAt: nil,
-                    isPinned: false,
-                    contentHash: hash
+                makeClipboardItem(
+                    from: content,
+                    sourceApp: sourceApp,
+                    now: now,
+                    hash: hash
                 )
             )
         }
@@ -302,6 +313,60 @@ final class AppModel: ObservableObject {
         pruneAndSortItems()
         persistState()
         selectedItemID = items.first?.id
+    }
+
+    private func makeClipboardItem(
+        from content: ClipboardCapturedContent,
+        sourceApp: NSRunningApplication?,
+        now: Date,
+        hash: String
+    ) -> ClipboardItem {
+        switch content {
+        case .text(let text):
+            return ClipboardItem(
+                kind: .text,
+                content: text,
+                sourceAppName: sourceApp?.localizedName,
+                sourceBundleID: sourceApp?.bundleIdentifier,
+                firstCopiedAt: now,
+                lastCopiedAt: now,
+                lastPastedViaPasteDockAt: nil,
+                isPinned: false,
+                contentHash: hash
+            )
+        case .image(let pngData, let width, let height):
+            return ClipboardItem(
+                kind: .image,
+                content: ClipboardItem.imagePlaceholder(width: width, height: height),
+                imagePNGData: pngData,
+                imageWidth: width,
+                imageHeight: height,
+                sourceAppName: sourceApp?.localizedName,
+                sourceBundleID: sourceApp?.bundleIdentifier,
+                firstCopiedAt: now,
+                lastCopiedAt: now,
+                lastPastedViaPasteDockAt: nil,
+                isPinned: false,
+                contentHash: hash
+            )
+        }
+    }
+
+    private func apply(content: ClipboardCapturedContent, to item: inout ClipboardItem) {
+        switch content {
+        case .text(let text):
+            item.kind = .text
+            item.content = text
+            item.imagePNGData = nil
+            item.imageWidth = nil
+            item.imageHeight = nil
+        case .image(let pngData, let width, let height):
+            item.kind = .image
+            item.content = ClipboardItem.imagePlaceholder(width: width, height: height)
+            item.imagePNGData = pngData
+            item.imageWidth = width
+            item.imageHeight = height
+        }
     }
 
     private func pruneAndSortItems() {

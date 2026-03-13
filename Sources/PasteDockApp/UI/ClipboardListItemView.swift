@@ -11,22 +11,33 @@ struct ClipboardListItemView: View {
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(item.primaryLine)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            if !item.secondaryLine.isEmpty {
-                Text(item.secondaryLine)
-                    .font(.system(size: 12))
+        HStack(alignment: .top, spacing: 10) {
+            if item.isImage {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .frame(width: 20, height: 20)
+                    .padding(.top, 2)
             }
 
-            Text(metadataLine)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.primaryLine)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                if !item.secondaryLine.isEmpty {
+                    Text(item.secondaryLine)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text(metadataLine)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 4)
@@ -38,10 +49,16 @@ struct ClipboardListItemView: View {
 
     private var metadataLine: String {
         let timeLabel = Self.relativeFormatter.localizedString(for: item.lastCopiedAt, relativeTo: Date())
+        let kindPrefix = item.isImage ? "Image" : nil
+
         if let sourceAppName = item.sourceAppName {
-            return "\(sourceAppName) · \(timeLabel)"
+            return [kindPrefix, sourceAppName, timeLabel]
+                .compactMap { $0 }
+                .joined(separator: " · ")
         }
 
-        return timeLabel
+        return [kindPrefix, timeLabel]
+            .compactMap { $0 }
+            .joined(separator: " · ")
     }
 }

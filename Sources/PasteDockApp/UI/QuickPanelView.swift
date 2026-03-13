@@ -95,19 +95,21 @@ struct QuickPanelView: View {
                     Text("Preview")
                         .font(.headline)
 
-                    Text(item.content)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(nsColor: .textBackgroundColor))
-                        )
+                    if item.isImage, let image = item.previewImage {
+                        imagePreview(image)
+                    } else {
+                        textPreview(item.content)
+                    }
 
                     VStack(alignment: .leading, spacing: 10) {
+                        metadataRow("Content type", value: item.contentTypeLabel)
                         metadataRow("First copied", value: Self.absoluteFormatter.string(from: item.firstCopiedAt))
                         metadataRow("Last copied", value: Self.absoluteFormatter.string(from: item.lastCopiedAt))
                         metadataRow("Source app", value: item.sourceAppName ?? item.sourceBundleID ?? "Unknown")
+
+                        if let imageDimensionText = item.imageDimensionText {
+                            metadataRow("Dimensions", value: imageDimensionText)
+                        }
 
                         if let lastPastedViaPasteDockAt = item.lastPastedViaPasteDockAt {
                             metadataRow(
@@ -140,7 +142,7 @@ struct QuickPanelView: View {
             Text("No clipboard items yet")
                 .font(.headline)
 
-            Text("Copy text in any app and PasteDock will build your recent history automatically.")
+            Text("Copy text or an image in any app and PasteDock will build your recent history automatically.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -178,6 +180,32 @@ struct QuickPanelView: View {
                 .font(.system(size: 12))
                 .textSelection(.enabled)
         }
+    }
+
+    private func textPreview(_ content: String) -> some View {
+        Text(content)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+    }
+
+    private func imagePreview(_ image: NSImage) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .textBackgroundColor))
+
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .padding(16)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 260, idealHeight: 360)
     }
 
     private func focusSearchField() {

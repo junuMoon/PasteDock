@@ -2,21 +2,29 @@ import AppKit
 import Foundation
 
 final class PasteboardService {
-    private var pendingProgrammaticContent: String?
+    private var pendingProgrammaticContentHash: String?
 
-    func setString(_ value: String) {
-        pendingProgrammaticContent = value
+    func setItem(_ item: ClipboardItem) {
+        pendingProgrammaticContentHash = item.contentHash
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
+
+        switch item.resolvedKind {
+        case .text:
+            pasteboard.setString(item.content, forType: .string)
+        case .image:
+            if let image = item.previewImage {
+                pasteboard.writeObjects([image])
+            }
+        }
     }
 
-    func consumeProgrammaticCopyIfNeeded(content: String) -> Bool {
-        guard pendingProgrammaticContent == content else {
+    func consumeProgrammaticCopyIfNeeded(contentHash: String) -> Bool {
+        guard pendingProgrammaticContentHash == contentHash else {
             return false
         }
 
-        pendingProgrammaticContent = nil
+        pendingProgrammaticContentHash = nil
         return true
     }
 }

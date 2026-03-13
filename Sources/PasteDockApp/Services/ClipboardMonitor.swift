@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class ClipboardMonitor {
-    var onTextChange: ((String) -> Void)?
+    var onChange: ((ClipboardCapturedContent) -> Void)?
 
     private var timer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
@@ -28,10 +28,24 @@ final class ClipboardMonitor {
 
         lastChangeCount = pasteboard.changeCount
 
-        guard let text = pasteboard.string(forType: .string) else {
+        if let text = pasteboard.string(forType: .string) {
+            onChange?(.text(text))
             return
         }
 
-        onTextChange?(text)
+        guard let image = NSImage(pasteboard: pasteboard),
+              let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return
+        }
+
+        onChange?(
+            .image(
+                pngData: pngData,
+                width: bitmap.pixelsWide,
+                height: bitmap.pixelsHigh
+            )
+        )
     }
 }

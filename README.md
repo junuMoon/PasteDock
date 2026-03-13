@@ -11,7 +11,7 @@ Primary docs:
 
 - SwiftUI/AppKit menu bar app shell
 - Global shortcut presets
-- Clipboard monitoring and local persistence
+- Text and image clipboard monitoring with local persistence
 - Left history list + right preview quick panel
 - `Enter` paste now
 - `Cmd+Enter` copy only
@@ -42,3 +42,13 @@ Or build and launch the `.app` directly:
 ```
 
 That produces `build/Build/Products/Debug/PasteDock.app` and opens it.
+
+## Screenshot Note
+
+`Cmd+Shift+4` saves a screenshot to a file, so PasteDock will not see it.
+
+To copy a screenshot image to the clipboard, use:
+
+```bash
+Ctrl+Cmd+Shift+4
+```
