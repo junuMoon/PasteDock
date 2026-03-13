@@ -1,6 +1,11 @@
 @preconcurrency import AppKit
 import SwiftUI
 
+private final class QuickPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 @MainActor
 final class QuickPanelController: NSWindowController, NSWindowDelegate {
     private unowned let appModel: AppModel
@@ -12,16 +17,16 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
         self.appModel = appModel
         self.hostingView = NSHostingView(rootView: AnyView(QuickPanelView().environmentObject(appModel)))
 
-        let panel = NSPanel(
+        let panel = QuickPanel(
             contentRect: NSRect(x: 0, y: 0, width: 980, height: 560),
-            styleMask: [.titled, .fullSizeContentView, .closable],
+            styleMask: [.titled, .fullSizeContentView, .closable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
+        panel.hidesOnDeactivate = true
         panel.level = .modalPanel
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
@@ -46,7 +51,6 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
         positionPanel()
         appModel.notePanelDidBecomeKey()
         installKeyMonitorIfNeeded()
-        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
 
