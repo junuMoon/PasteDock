@@ -13,7 +13,7 @@ final class PasteExecutor {
             return false
         }
 
-        guard accessibilityService.isTrusted(prompt: false) || accessibilityService.isTrusted(prompt: true) else {
+        guard accessibilityService.isTrusted(prompt: false) else {
             return false
         }
 

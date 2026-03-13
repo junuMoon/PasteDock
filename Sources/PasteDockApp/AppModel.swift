@@ -143,8 +143,10 @@ final class AppModel: ObservableObject {
 
             if pasted {
                 lastActionMessage = "Pasted into the active app."
-            } else {
+            } else if accessibilityTrusted {
                 lastActionMessage = "Copied to clipboard. Press Cmd+V manually."
+            } else {
+                lastActionMessage = "Copied to clipboard. Grant Accessibility to enable Paste now."
             }
         } else {
             lastActionMessage = "Copied to clipboard."
