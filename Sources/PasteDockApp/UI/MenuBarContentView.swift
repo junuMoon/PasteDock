@@ -8,10 +8,30 @@ struct MenuBarContentView: View {
             Text("PasteDock")
                 .font(.headline)
 
-            Text("App shell is ready.")
+            Text(appModel.clipboardCountLabel)
                 .foregroundStyle(.secondary)
 
             Divider()
+
+            Button("Open Quick Panel") {
+                appModel.openQuickPanel()
+            }
+
+            Button(appModel.pauseCaptureTitle) {
+                appModel.toggleCapturePaused()
+            }
+
+            Button("Clear History") {
+                appModel.clearHistory()
+            }
+
+            Divider()
+
+            if !appModel.accessibilityTrusted {
+                Button("Request Accessibility Access") {
+                    appModel.requestAccessibilityAccess()
+                }
+            }
 
             SettingsLink {
                 Text("Settings")
@@ -22,6 +42,6 @@ struct MenuBarContentView: View {
             }
         }
         .padding(14)
-        .frame(width: 240)
+        .frame(width: 260)
     }
 }
