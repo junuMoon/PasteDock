@@ -3,10 +3,8 @@ import Foundation
 
 @MainActor
 final class PasteExecutor {
-    private let pasteKeyInterval: Duration = .milliseconds(12)
-    private let postCloseDelay: Duration = .milliseconds(70)
     private let activationPollInterval: Duration = .milliseconds(25)
-    private let activationTimeout: Duration = .milliseconds(800)
+    private let activationTimeout: Duration = .milliseconds(400)
     private let accessibilityService: AccessibilityService
 
     init(accessibilityService: AccessibilityService) {
@@ -14,23 +12,19 @@ final class PasteExecutor {
     }
 
     func paste(into app: NSRunningApplication?) async -> Bool {
+        guard let app else {
+            return false
+        }
+
         guard accessibilityService.isTrusted(prompt: false) else {
             return false
         }
 
-        if let app,
-           NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
-            app.unhide()
-            _ = app.activate(options: [.activateAllWindows])
+        app.unhide()
+        _ = app.activate(options: [.activateAllWindows])
+        _ = await waitForFrontmostApplication(processIdentifier: app.processIdentifier)
 
-            guard await waitForFrontmostApplication(processIdentifier: app.processIdentifier) else {
-                return false
-            }
-        }
-
-        try? await Task.sleep(for: postCloseDelay)
-
-        let source = CGEventSource(stateID: .combinedSessionState)
+        let source = CGEventSource(stateID: .hidSystemState)
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
             return false
@@ -38,9 +32,8 @@ final class PasteExecutor {
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        try? await Task.sleep(for: pasteKeyInterval)
-        keyUp.post(tap: .cghidEventTap)
+        keyDown.postToPid(app.processIdentifier)
+        keyUp.postToPid(app.processIdentifier)
 
         return true
     }
