@@ -16,9 +16,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.fran.pastedock
         INFOPLIST_FILE: PasteDock/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: PasteDock.entitlements
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: X5GBA5Z525
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         GENERATE_INFOPLIST_FILE: false
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_IDENTITY: "Apple Development: francomoon7@gmail.com (SBN6GFWU56)"
         PRODUCT_NAME: PasteDock
         MARKETING_VERSION: "0.1.0"

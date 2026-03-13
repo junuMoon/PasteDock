@@ -141,6 +141,12 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					6A871FC64B6FB272CAFECCEB = {
+						DevelopmentTeam = X5GBA5Z525;
+						ProvisioningStyle = Manual;
+					};
+				};
 			};
 			buildConfigurationList = 20FB07DDF7C1920E55408A62 /* Build configuration list for PBXProject "PasteDock" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -250,8 +256,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PasteDock.entitlements;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development: francomoon7@gmail.com (SBN6GFWU56)";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = X5GBA5Z525;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PasteDock/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -272,8 +280,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PasteDock.entitlements;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development: francomoon7@gmail.com (SBN6GFWU56)";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = X5GBA5Z525;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PasteDock/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
