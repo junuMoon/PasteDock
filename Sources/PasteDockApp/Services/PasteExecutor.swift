@@ -1,34 +1,33 @@
 import AppKit
-import ApplicationServices
-import Carbon.HIToolbox
 import Foundation
 
-@_silgen_name("AXUIElementPostKeyboardEvent")
-private func axPostKeyboardEvent(
-    _ application: AXUIElement,
-    _ keyChar: CGCharCode,
-    _ virtualKey: CGKeyCode,
-    _ keyDown: DarwinBoolean
-) -> AXError
+enum PasteExecutionResult {
+    case success
+    case missingAccessibilityPermission
+    case missingAutomationPermission
+    case targetActivationFailed
+    case systemEventsFailed
+}
 
 @MainActor
 final class PasteExecutor {
-    private let commandKeyCode = CGKeyCode(kVK_Command)
-    private let pasteKeyCode = CGKeyCode(kVK_ANSI_V)
-    private let pasteCharacter = CGCharCode(UnicodeScalar("v").value)
-    private let keyInterval: Duration = .milliseconds(12)
     private let postCloseDelay: Duration = .milliseconds(80)
     private let activationPollInterval: Duration = .milliseconds(25)
     private let activationTimeout: Duration = .milliseconds(800)
     private let accessibilityService: AccessibilityService
+    private let pasteScriptSource = """
+    tell application "System Events"
+        keystroke "v" using command down
+    end tell
+    """
 
     init(accessibilityService: AccessibilityService) {
         self.accessibilityService = accessibilityService
     }
 
-    func paste(into app: NSRunningApplication?) async -> Bool {
+    func paste(into app: NSRunningApplication?) async -> PasteExecutionResult {
         guard accessibilityService.isTrusted(prompt: false) else {
-            return false
+            return .missingAccessibilityPermission
         }
 
         let targetApplication = app ?? NSWorkspace.shared.frontmostApplication
@@ -39,18 +38,13 @@ final class PasteExecutor {
             _ = targetApplication.activate(options: [.activateAllWindows])
 
             guard await waitForFrontmostApplication(processIdentifier: targetApplication.processIdentifier) else {
-                return false
+                return .targetActivationFailed
             }
         }
 
         try? await Task.sleep(for: postCloseDelay)
 
-        let targetElement = targetApplication
-            .map { AXUIElementCreateApplication($0.processIdentifier) }
-            ?? AXUIElementCreateSystemWide()
-
-        AXUIElementSetMessagingTimeout(targetElement, 1.0)
-        return await postPasteShortcut(to: targetElement)
+        return executePasteScript()
     }
 
     private func waitForFrontmostApplication(processIdentifier: pid_t) async -> Bool {
@@ -68,24 +62,23 @@ final class PasteExecutor {
         return NSWorkspace.shared.frontmostApplication?.processIdentifier == processIdentifier
     }
 
-    private func postPasteShortcut(to targetElement: AXUIElement) async -> Bool {
-        let resultSequence = [
-            axPostKeyboardEvent(targetElement, 0, commandKeyCode, true),
-            axPostKeyboardEvent(targetElement, pasteCharacter, pasteKeyCode, true)
-        ]
-
-        guard resultSequence.allSatisfy({ $0 == .success }) else {
-            _ = axPostKeyboardEvent(targetElement, 0, commandKeyCode, false)
-            return false
+    private func executePasteScript() -> PasteExecutionResult {
+        guard let script = NSAppleScript(source: pasteScriptSource) else {
+            return .systemEventsFailed
         }
 
-        try? await Task.sleep(for: keyInterval)
+        var errorInfo: NSDictionary?
+        script.executeAndReturnError(&errorInfo)
 
-        let releaseSequence = [
-            axPostKeyboardEvent(targetElement, pasteCharacter, pasteKeyCode, false),
-            axPostKeyboardEvent(targetElement, 0, commandKeyCode, false)
-        ]
+        guard let errorInfo else {
+            return .success
+        }
 
-        return releaseSequence.allSatisfy { $0 == .success }
+        let errorCode = errorInfo[NSAppleScript.errorNumber] as? Int
+        if errorCode == -1743 {
+            return .missingAutomationPermission
+        }
+
+        return .systemEventsFailed
     }
 }

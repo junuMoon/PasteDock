@@ -143,15 +143,20 @@ final class AppModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
 
-                let pasted = await pasteExecutor.paste(into: targetApp)
+                let result = await pasteExecutor.paste(into: targetApp)
                 accessibilityTrusted = accessibilityService.isTrusted(prompt: false)
 
-                if pasted {
+                switch result {
+                case .success:
                     lastActionMessage = "Pasted into the active app."
-                } else if accessibilityTrusted {
-                    lastActionMessage = "Copied to clipboard. Press Cmd+V manually."
-                } else {
+                case .missingAccessibilityPermission:
                     lastActionMessage = "Copied to clipboard. Grant Accessibility to enable Paste now."
+                case .missingAutomationPermission:
+                    lastActionMessage = "Copied to clipboard. Allow Automation for System Events to enable Paste now."
+                case .targetActivationFailed:
+                    lastActionMessage = "Copied to clipboard. Could not focus the target app."
+                case .systemEventsFailed:
+                    lastActionMessage = "Copied to clipboard. Press Cmd+V manually."
                 }
             }
         } else {

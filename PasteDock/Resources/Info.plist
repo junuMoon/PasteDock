@@ -20,6 +20,8 @@
     <true/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>PasteDock uses System Events to paste the selected clipboard item into your active app.</string>
     <key>NSHumanReadableCopyright</key>
     <string>PasteDock</string>
 </dict>
