@@ -2,22 +2,23 @@
 
 ## 1. Product Summary
 
-PasteDock is a desktop clipboard history app that stores recent clipboard items, lets users search them quickly, and re-paste previous content without losing context.
+PasteDock is a desktop clipboard recall tool that keeps clipboard history in the background and helps users restore a previously copied item with minimal interruption to their current task.
 
 Initial assumption:
 - Platform: macOS 14+
 - Form factor: menu bar utility with global shortcut
 - Priority: fast recall, privacy, low-friction usage
+- Primary interaction: open panel, move selection, press `Enter` to paste now
 
 ## 2. Problem
 
-Users copy multiple snippets while working, then lose earlier clipboard entries as soon as a new copy action occurs. Existing workflows are fragile, especially when switching between IDEs, terminals, browsers, docs, and chat tools.
+Users copy multiple snippets while working, then lose earlier clipboard entries as soon as a new copy action occurs. Existing workflows are fragile, especially when switching between IDEs, terminals, browsers, docs, and chat tools, and recovering an older snippet often breaks focus.
 
 ## 3. Goals
 
 - Keep a reliable history of recent clipboard entries
-- Make past items searchable in under 2 seconds
-- Allow one-keystroke re-copy or paste of previous items
+- Make the common recovery path work without typing a search query
+- Let users restore a past item and paste it into the active app in under 2 seconds
 - Respect privacy with local-first storage and explicit exclusions
 - Stay lightweight enough to run continuously in the background
 
@@ -36,9 +37,9 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 
 ## 6. Core Use Cases
 
-1. A user copies several code snippets and wants to restore the second one later.
-2. A user searches old clipboard text by keyword and re-copies it instantly.
-3. A user pins frequently used snippets such as prompts, shell commands, or templates.
+1. A user copies several code snippets and wants to restore the second one later with `Down` then `Enter`.
+2. A user opens PasteDock and immediately pastes the most recent useful item without typing.
+3. A user searches old clipboard text by keyword when browsing recent items is not enough.
 4. A user excludes sensitive apps so copied passwords or secrets are not stored.
 
 ## 7. MVP Scope
@@ -46,11 +47,12 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 ### Included
 
 - Clipboard monitoring in the background
-- History list with newest-first ordering
-- Text snippet preview
+- History list sorted by `last_copied_at` descending
+- Split panel with history list on the left and preview on the right
 - Search by text content
-- Re-copy selected item to system clipboard
-- Pin / unpin items
+- `Enter`: set clipboard and paste immediately into the previously active app
+- `Cmd+Enter`: set clipboard only
+- Pin / unpin items as a later enhancement, not required for the first usable build
 - Delete single item and clear all history
 - App exclusion list
 - Local persistence
@@ -68,17 +70,19 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 
 - Zero setup to start capturing clipboard history
 - Keyboard-first interaction should cover common actions
-- Recall should be faster than manually searching old files or re-copying
+- Search is a fallback, not the primary path
+- `Enter` should mean "paste now" everywhere in the quick panel
 - Sensitive data handling must be explicit and understandable
 
 ## 9. Primary User Flow
 
 1. User installs and launches PasteDock.
 2. App requests required accessibility or clipboard-related permissions if needed.
-3. PasteDock begins capturing clipboard changes.
-4. User opens the history with a menu bar click or global shortcut.
-5. User filters the list by typing.
-6. User selects an item to re-copy, pin, or delete.
+3. PasteDock begins capturing clipboard changes in the background.
+4. User opens the quick panel with a global shortcut.
+5. The search field is focused, the query is empty, and the first result is preselected.
+6. User either presses `Enter` immediately, moves with arrow keys, or types to search.
+7. `Enter` pastes the selected item into the previously active app and closes the panel.
 
 ## 10. Functional Requirements
 
@@ -86,13 +90,14 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 
 - Detect clipboard changes without duplicating identical consecutive entries
 - Store plain text for MVP
-- Timestamp every entry
+- Track first-seen and last-used timestamps
 - Respect maximum history size configured by the user
 
 ### History Management
 
-- Show recent items in descending time order
-- Support pinning pinned items to a dedicated section
+- Show items in descending `last_copied_at` order
+- Reusing an item via PasteDock should update its `last_copied_at`
+- Support pinning pinned items later, but do not block initial implementation on it
 - Allow deletion of individual entries
 - Allow clearing all non-pinned history
 
@@ -101,6 +106,17 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 - Filter by substring match
 - Highlight matching terms in results
 - Preserve responsive filtering for at least 5,000 items
+- Opening the panel with an empty query must still be useful without search
+
+### Quick Panel Interaction
+
+- The quick panel opens with the search field focused
+- The first visible row is preselected by default
+- `Up` / `Down` changes selection without leaving the keyboard flow
+- `Enter` sets the selected content as the current system clipboard value, pastes it into the previously active app, and closes the panel
+- `Cmd+Enter` sets the selected content as the current system clipboard value without pasting
+- `Esc` closes the panel without changing the clipboard
+- The left pane is optimized for rapid scanning; the right pane confirms the selected content and metadata
 
 ### Privacy
 
@@ -115,6 +131,7 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 - Configure history size limit
 - Configure retention window
 - Manage excluded applications
+- Configure whether the app should prefer direct paste or copy-only by default in future versions
 
 ## 11. Non-Functional Requirements
 
@@ -123,6 +140,7 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 - Background monitoring should have minimal CPU impact when idle
 - App must remain usable offline
 - Storage format should be resilient across app restarts and crashes
+- Open-to-paste interaction should finish in under 2 seconds for recent items
 
 ## 12. Data Model
 
@@ -131,8 +149,10 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 - `id`: stable unique identifier
 - `content`: plain text payload
 - `content_preview`: shortened preview string
-- `source_app`: bundle identifier if available
-- `captured_at`: timestamp
+- `source_app`: most recent non-PasteDock source app if available
+- `first_copied_at`: first time the content entered clipboard history
+- `last_copied_at`: last time the content became the active system clipboard value
+- `last_pasted_via_pastedock_at`: last time PasteDock directly pasted the item
 - `is_pinned`: boolean
 - `content_hash`: used for deduplication
 
@@ -143,6 +163,7 @@ Users copy multiple snippets while working, then lose earlier clipboard entries 
 - `global_shortcut`
 - `capture_paused`
 - `excluded_apps`
+- `default_submit_mode`
 
 ## 13. Storage Strategy
 
@@ -174,8 +195,8 @@ Candidate implementation paths:
 ## 16. Success Metrics
 
 - Daily active usage among test users
-- Number of re-copies from history per day
-- Median time from opening PasteDock to selecting an item
+- Number of successful restores per day
+- Median time from opening PasteDock to pasting an item
 - Percentage of users enabling exclusions or retention controls
 
 ## 17. Milestones
@@ -183,16 +204,17 @@ Candidate implementation paths:
 ### Milestone 1: Prototype
 
 - Clipboard capture
-- Basic list UI
-- Re-copy action
+- Basic split-panel UI
+- `Enter` paste-now action
+- `Cmd+Enter` copy-only action
 
 ### Milestone 2: MVP
 
 - Search
-- Pinning
 - Persistence
 - Settings
 - Exclusions
+- Optional pinning if it proves necessary
 
 ### Milestone 3: Post-MVP
 
@@ -206,4 +228,4 @@ Candidate implementation paths:
 - Should v1 support only text, or text plus images?
 - Is the product explicitly macOS-only, or should Windows support shape architecture early?
 - Is encrypted local storage required for launch, or acceptable as a later enhancement?
-- Should pinned snippets behave like a small reusable library or remain part of the same history model?
+- Should pinning ship in the first public version or remain deferred until the browse/restore loop is validated?
