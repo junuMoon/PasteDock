@@ -5,14 +5,14 @@ struct PersistedState: Codable {
     var items: [ClipboardItem]
 }
 
-final class PersistenceService {
+final class PersistenceService: @unchecked Sendable {
     private let fileManager = FileManager.default
+    private let queue = DispatchQueue(label: "PasteDock.Persistence", qos: .utility)
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
     init() {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         self.encoder = encoder
 
@@ -22,23 +22,45 @@ final class PersistenceService {
     }
 
     func loadState() -> PersistedState {
-        let url = stateURL()
+        queue.sync {
+            let url = stateURL()
 
-        guard let data = try? Data(contentsOf: url),
-              let state = try? decoder.decode(PersistedState.self, from: data) else {
-            return PersistedState(settings: AppSettings(), items: [])
+            guard let data = try? Data(contentsOf: url),
+                  let state = try? decoder.decode(PersistedState.self, from: data) else {
+                return PersistedState(settings: AppSettings(), items: [])
+            }
+
+            return state
         }
-
-        return state
     }
 
     func saveState(items: [ClipboardItem], settings: AppSettings) throws {
-        let directoryURL = try applicationSupportDirectory()
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-
         let state = PersistedState(settings: settings, items: items)
-        let data = try encoder.encode(state)
-        try data.write(to: stateURL(), options: .atomic)
+        try queue.sync {
+            try write(state: state)
+        }
+    }
+
+    func saveStateAsync(
+        items: [ClipboardItem],
+        settings: AppSettings,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        let state = PersistedState(settings: settings, items: items)
+
+        queue.async { [weak self] in
+            guard let self else {
+                completion(.success(()))
+                return
+            }
+
+            do {
+                try self.write(state: state)
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
+        }
     }
 
     private func stateURL() -> URL {
@@ -55,5 +77,13 @@ final class PersistenceService {
         )
 
         return baseURL.appendingPathComponent("PasteDock", isDirectory: true)
+    }
+
+    private func write(state: PersistedState) throws {
+        let directoryURL = try applicationSupportDirectory()
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        let data = try encoder.encode(state)
+        try data.write(to: stateURL(), options: .atomic)
     }
 }

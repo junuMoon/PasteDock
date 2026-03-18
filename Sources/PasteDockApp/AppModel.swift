@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastActionMessage: String?
     @Published private(set) var panelPresentationID = UUID()
 
+    private let persistenceDebounce: Duration = .milliseconds(400)
     private let persistenceService = PersistenceService()
     private let pasteboardService = PasteboardService()
     private let clipboardMonitor = ClipboardMonitor()
@@ -23,6 +24,7 @@ final class AppModel: ObservableObject {
     private lazy var quickPanelController = QuickPanelController(appModel: self)
 
     private var lastKnownExternalApplication: NSRunningApplication?
+    private var pendingPersistenceTask: Task<Void, Never>?
     private var workspaceObserver: NSObjectProtocol?
 
     private init() {
@@ -36,7 +38,7 @@ final class AppModel: ObservableObject {
         registerWorkspaceObserver()
         configureHotKey()
         configureClipboardMonitor()
-        persistState()
+        persistStateImmediately()
     }
 
     var filteredItems: [ClipboardItem] {
@@ -77,7 +79,7 @@ final class AppModel: ObservableObject {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
             settings.excludedBundleIDs = bundleIDs
-            persistState()
+            schedulePersistState()
         }
     }
 
@@ -168,13 +170,13 @@ final class AppModel: ObservableObject {
     func deleteSelectedItem() {
         guard let selected = selectedItem else { return }
         items.removeAll { $0.id == selected.id }
-        persistState()
+        schedulePersistState()
         ensureValidSelection()
     }
 
     func clearHistory() {
         items.removeAll()
-        persistState()
+        schedulePersistState()
         ensureValidSelection()
     }
 
@@ -184,25 +186,25 @@ final class AppModel: ObservableObject {
 
     func setCapturePaused(_ isPaused: Bool) {
         settings.capturePaused = isPaused
-        persistState()
+        schedulePersistState()
     }
 
     func updateShortcutPreset(_ preset: KeyboardShortcutPreset) {
         settings.shortcutPreset = preset
         configureHotKey()
-        persistState()
+        schedulePersistState()
     }
 
     func updateHistoryLimit(_ value: Int) {
         settings.maxHistoryItems = max(10, value)
         pruneAndSortItems()
-        persistState()
+        schedulePersistState()
     }
 
     func updateRetentionDays(_ value: Int) {
         settings.retentionDays = max(1, value)
         pruneAndSortItems()
-        persistState()
+        schedulePersistState()
     }
 
     func requestAccessibilityAccess() {
@@ -218,9 +220,16 @@ final class AppModel: ObservableObject {
     }
 
     deinit {
+        pendingPersistenceTask?.cancel()
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
+    }
+
+    func flushPersistence() {
+        pendingPersistenceTask?.cancel()
+        pendingPersistenceTask = nil
+        persistStateImmediately()
     }
 
     private func configureHotKey() {
@@ -323,7 +332,7 @@ final class AppModel: ObservableObject {
         }
 
         pruneAndSortItems()
-        persistState()
+        schedulePersistState()
         ensureValidSelection()
     }
 
@@ -338,7 +347,7 @@ final class AppModel: ObservableObject {
         }
 
         pruneAndSortItems()
-        persistState()
+        schedulePersistState()
         ensureValidSelection()
     }
 
@@ -425,11 +434,40 @@ final class AppModel: ObservableObject {
         selectedItemID = filteredItems.first?.id
     }
 
-    private func persistState() {
+    private func schedulePersistState() {
+        let itemsSnapshot = items
+        let settingsSnapshot = settings
+        let persistenceDebounce = self.persistenceDebounce
+
+        pendingPersistenceTask?.cancel()
+        pendingPersistenceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: persistenceDebounce)
+            } catch {
+                return
+            }
+
+            self?.persistStateInBackground(items: itemsSnapshot, settings: settingsSnapshot)
+        }
+    }
+
+    private func persistStateImmediately() {
         do {
             try persistenceService.saveState(items: items, settings: settings)
         } catch {
             lastActionMessage = "Failed to save clipboard history: \(error.localizedDescription)"
+        }
+    }
+
+    private func persistStateInBackground(items: [ClipboardItem], settings: AppSettings) {
+        persistenceService.saveStateAsync(items: items, settings: settings) { [weak self] result in
+            guard case .failure(let error) = result else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                self?.lastActionMessage = "Failed to save clipboard history: \(error.localizedDescription)"
+            }
         }
     }
 
