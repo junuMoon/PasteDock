@@ -3,6 +3,7 @@ import SwiftUI
 struct QuickPanelView: View {
     @EnvironmentObject private var appModel: AppModel
     @FocusState private var isSearchFocused: Bool
+    @State private var pendingScrollTask: Task<Void, Never>?
 
     private static let absoluteFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -10,6 +11,13 @@ struct QuickPanelView: View {
         formatter.timeStyle = .short
         return formatter
     }()
+
+    private var searchQueryBinding: Binding<String> {
+        Binding(
+            get: { appModel.searchQuery },
+            set: { appModel.updateSearchQuery($0) }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,17 +32,17 @@ struct QuickPanelView: View {
         .onAppear {
             focusSearchField()
         }
+        .onDisappear {
+            pendingScrollTask?.cancel()
+        }
         .onChange(of: appModel.panelPresentationID) { _, _ in
             focusSearchField()
-        }
-        .onChange(of: appModel.searchQuery) { _, _ in
-            appModel.handleSearchChange()
         }
     }
 
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
-            TextField("Search clipboard history...", text: $appModel.searchQuery)
+            TextField("Search clipboard history...", text: searchQueryBinding)
                 .textFieldStyle(.roundedBorder)
                 .focused($isSearchFocused)
 
@@ -84,16 +92,13 @@ struct QuickPanelView: View {
                         }
                     }
                     .onAppear {
-                        scrollSelection(into: proxy, animated: false)
+                        scheduleScrollSelection(into: proxy)
                     }
                     .onChange(of: appModel.selectedItemID) { _, _ in
-                        scrollSelection(into: proxy, animated: true)
+                        scheduleScrollSelection(into: proxy)
                     }
                     .onChange(of: appModel.panelPresentationID) { _, _ in
-                        scrollSelection(into: proxy, animated: false)
-                    }
-                    .onChange(of: appModel.filteredItems.map(\.id)) { _, _ in
-                        scrollSelection(into: proxy, animated: false)
+                        scheduleScrollSelection(into: proxy)
                     }
                 }
                 .listStyle(.inset)
@@ -110,7 +115,7 @@ struct QuickPanelView: View {
                     Text("Preview")
                         .font(.headline)
 
-                    if item.isImage, let image = item.previewImage {
+                    if item.isImage, let image = appModel.previewImage(for: item) {
                         imagePreview(image)
                     } else {
                         textPreview(item.content)
@@ -229,19 +234,19 @@ struct QuickPanelView: View {
         }
     }
 
-    private func scrollSelection(into proxy: ScrollViewProxy, animated: Bool) {
+    private func scheduleScrollSelection(into proxy: ScrollViewProxy) {
         guard let selectedItemID = appModel.selectedItemID else {
             return
         }
 
-        DispatchQueue.main.async {
-            if animated {
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    proxy.scrollTo(selectedItemID, anchor: .center)
-                }
-            } else {
-                proxy.scrollTo(selectedItemID, anchor: .center)
+        pendingScrollTask?.cancel()
+        pendingScrollTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else {
+                return
             }
+
+            proxy.scrollTo(selectedItemID, anchor: .center)
         }
     }
 }

@@ -99,10 +99,7 @@ struct ClipboardItem: Codable, Identifiable, Hashable {
         case .image:
             return "Image"
         case .text:
-            let firstLine = content
-                .components(separatedBy: .newlines)
-                .first?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let firstLine = firstNonEmptyLine(in: content)
 
             if let firstLine, !firstLine.isEmpty {
                 return String(firstLine.prefix(72))
@@ -117,13 +114,7 @@ struct ClipboardItem: Codable, Identifiable, Hashable {
         case .image:
             return imageDimensionText ?? "Image clipboard item"
         case .text:
-            let lines = content.components(separatedBy: .newlines)
-            guard lines.count > 1 else {
-                return ""
-            }
-
-            let rest = lines.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-            return String(rest.prefix(96))
+            return remainingPreviewText(in: content, limit: 96)
         }
     }
 
@@ -164,5 +155,49 @@ struct ClipboardItem: Codable, Identifiable, Hashable {
     static func makeHash(for data: Data) -> String {
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func firstNonEmptyLine(in text: String) -> String? {
+        for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+
+        return nil
+    }
+
+    private func remainingPreviewText(in text: String, limit: Int) -> String {
+        var encounteredNewline = false
+        var preview = String()
+
+        for character in text {
+            if character.isNewline {
+                encounteredNewline = true
+                if !preview.isEmpty, preview.last != " " {
+                    preview.append(" ")
+                }
+                continue
+            }
+
+            guard encounteredNewline else {
+                continue
+            }
+
+            if character.isWhitespace {
+                if !preview.isEmpty, preview.last != " " {
+                    preview.append(" ")
+                }
+                continue
+            }
+
+            preview.append(character)
+            if preview.count >= limit {
+                break
+            }
+        }
+
+        return preview.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

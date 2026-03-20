@@ -7,9 +7,11 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var launchDate = Date()
     @Published private(set) var items: [ClipboardItem]
+    @Published private(set) var filteredItems: [ClipboardItem] = []
     @Published var settings: AppSettings
     @Published var searchQuery = ""
     @Published var selectedItemID: ClipboardItem.ID?
+    @Published private(set) var selectedItem: ClipboardItem?
     @Published private(set) var accessibilityTrusted: Bool
     @Published private(set) var lastActionMessage: String?
     @Published private(set) var panelPresentationID = UUID()
@@ -20,10 +22,12 @@ final class AppModel: ObservableObject {
     private let clipboardMonitor = ClipboardMonitor()
     private let hotKeyService = HotKeyService()
     private let accessibilityService = AccessibilityService()
+    private let previewImageCache = NSCache<NSString, NSImage>()
     private lazy var pasteExecutor = PasteExecutor(accessibilityService: accessibilityService)
     private lazy var quickPanelController = QuickPanelController(appModel: self)
 
     private var lastKnownExternalApplication: NSRunningApplication?
+    private var normalizedSearchableTextByID: [ClipboardItem.ID: String] = [:]
     private var pendingPersistenceTask: Task<Void, Never>?
     private var workspaceObserver: NSObjectProtocol?
 
@@ -35,30 +39,12 @@ final class AppModel: ObservableObject {
 
         migrateShortcutPreferenceIfNeeded()
         pruneAndSortItems()
+        rebuildSearchIndex()
+        refreshDerivedState(preserveSelection: false)
         registerWorkspaceObserver()
         configureHotKey()
         configureClipboardMonitor()
         persistStateImmediately()
-    }
-
-    var filteredItems: [ClipboardItem] {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else {
-            return items
-        }
-
-        let loweredQuery = query.localizedLowercase
-        return items.filter { item in
-            item.searchableText.localizedLowercase.contains(loweredQuery)
-        }
-    }
-
-    var selectedItem: ClipboardItem? {
-        guard let selectedItemID else {
-            return filteredItems.first
-        }
-
-        return filteredItems.first { $0.id == selectedItemID } ?? filteredItems.first
     }
 
     var pauseCaptureTitle: String {
@@ -91,7 +77,7 @@ final class AppModel: ObservableObject {
         }
         lastActionMessage = nil
         searchQuery = ""
-        selectFirstFilteredItem()
+        refreshDerivedState(preserveSelection: false)
         panelPresentationID = UUID()
         quickPanelController.show()
     }
@@ -110,7 +96,7 @@ final class AppModel: ObservableObject {
 
     func moveSelection(offset: Int) {
         guard !filteredItems.isEmpty else {
-            selectedItemID = nil
+            setSelectedItemID(nil)
             return
         }
 
@@ -121,11 +107,15 @@ final class AppModel: ObservableObject {
         }
 
         let targetIndex = min(max(currentIndex + offset, 0), filteredItems.count - 1)
-        selectedItemID = filteredItems[targetIndex].id
+        guard targetIndex != currentIndex else {
+            return
+        }
+
+        setSelectedItemID(filteredItems[targetIndex].id)
     }
 
     func selectItem(_ item: ClipboardItem) {
-        selectedItemID = item.id
+        setSelectedItemID(item.id)
     }
 
     func submitSelectedItem(mode: SubmitMode) {
@@ -171,13 +161,13 @@ final class AppModel: ObservableObject {
         guard let selected = selectedItem else { return }
         items.removeAll { $0.id == selected.id }
         schedulePersistState()
-        ensureValidSelection()
+        syncDerivedStateAfterItemMutation()
     }
 
     func clearHistory() {
         items.removeAll()
         schedulePersistState()
-        ensureValidSelection()
+        syncDerivedStateAfterItemMutation()
     }
 
     func toggleCapturePaused() {
@@ -198,12 +188,14 @@ final class AppModel: ObservableObject {
     func updateHistoryLimit(_ value: Int) {
         settings.maxHistoryItems = max(10, value)
         pruneAndSortItems()
+        syncDerivedStateAfterItemMutation()
         schedulePersistState()
     }
 
     func updateRetentionDays(_ value: Int) {
         settings.retentionDays = max(1, value)
         pruneAndSortItems()
+        syncDerivedStateAfterItemMutation()
         schedulePersistState()
     }
 
@@ -211,12 +203,35 @@ final class AppModel: ObservableObject {
         accessibilityTrusted = accessibilityService.isTrusted(prompt: true)
     }
 
+    func updateSearchQuery(_ query: String) {
+        searchQuery = query
+        refreshDerivedState(preserveSelection: true)
+    }
+
     func handleSearchChange() {
-        ensureValidSelection()
+        refreshDerivedState(preserveSelection: true)
     }
 
     func notePanelDidBecomeKey() {
-        selectFirstFilteredItem()
+        refreshDerivedState(preserveSelection: false)
+    }
+
+    func previewImage(for item: ClipboardItem) -> NSImage? {
+        guard let imagePNGData = item.imagePNGData else {
+            return nil
+        }
+
+        let cacheKey = item.contentHash as NSString
+        if let cachedImage = previewImageCache.object(forKey: cacheKey) {
+            return cachedImage
+        }
+
+        guard let image = NSImage(data: imagePNGData) else {
+            return nil
+        }
+
+        previewImageCache.setObject(image, forKey: cacheKey)
+        return image
     }
 
     deinit {
@@ -333,7 +348,7 @@ final class AppModel: ObservableObject {
 
         pruneAndSortItems()
         schedulePersistState()
-        ensureValidSelection()
+        syncDerivedStateAfterItemMutation()
     }
 
     private func updateItemUsage(itemID: ClipboardItem.ID, now: Date, directPaste: Bool) {
@@ -348,7 +363,7 @@ final class AppModel: ObservableObject {
 
         pruneAndSortItems()
         schedulePersistState()
-        ensureValidSelection()
+        syncDerivedStateAfterItemMutation()
     }
 
     private func makeClipboardItem(
@@ -416,9 +431,68 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func syncDerivedStateAfterItemMutation() {
+        rebuildSearchIndex()
+        refreshDerivedState(preserveSelection: true)
+    }
+
+    private func rebuildSearchIndex() {
+        normalizedSearchableTextByID = Dictionary(
+            uniqueKeysWithValues: items.map { item in
+                (item.id, Self.makeNormalizedSearchText(for: item))
+            }
+        )
+    }
+
+    private func refreshDerivedState(preserveSelection: Bool) {
+        filteredItems = matchingItems(for: searchQuery)
+
+        let nextSelectedID: ClipboardItem.ID?
+        if preserveSelection,
+           let selectedItemID,
+           filteredItems.contains(where: { $0.id == selectedItemID }) {
+            nextSelectedID = selectedItemID
+        } else {
+            nextSelectedID = filteredItems.first?.id
+        }
+
+        setSelectedItemID(nextSelectedID)
+    }
+
+    private func matchingItems(for query: String) -> [ClipboardItem] {
+        let normalizedQuery = query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        guard !normalizedQuery.isEmpty else {
+            return items
+        }
+
+        return items.filter { item in
+            normalizedSearchableTextByID[item.id, default: ""].contains(normalizedQuery)
+        }
+    }
+
+    private static func makeNormalizedSearchText(for item: ClipboardItem) -> String {
+        item.searchableText.lowercased()
+    }
+
+    private func setSelectedItemID(_ id: ClipboardItem.ID?) {
+        let nextSelectedItem = id.flatMap { selectedID in
+            filteredItems.first(where: { $0.id == selectedID })
+        } ?? filteredItems.first
+
+        guard selectedItemID != id || selectedItem != nextSelectedItem else {
+            return
+        }
+
+        selectedItemID = id
+        selectedItem = nextSelectedItem
+    }
+
     private func ensureValidSelection() {
         guard !filteredItems.isEmpty else {
-            selectedItemID = nil
+            setSelectedItemID(nil)
             return
         }
 
@@ -431,7 +505,7 @@ final class AppModel: ObservableObject {
     }
 
     private func selectFirstFilteredItem() {
-        selectedItemID = filteredItems.first?.id
+        setSelectedItemID(filteredItems.first?.id)
     }
 
     private func schedulePersistState() {

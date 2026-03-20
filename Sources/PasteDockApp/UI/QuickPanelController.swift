@@ -89,7 +89,6 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isEditingTextInput = panel.firstResponder is NSTextView
 
         switch event.keyCode {
         case 125:
@@ -102,12 +101,7 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
             appModel.closeQuickPanel()
             return true
         case 51, 117:
-            if modifiers.contains(.command) {
-                appModel.deleteSelectedItem()
-                return true
-            }
-
-            if isEditingTextInput {
+            guard modifiers.contains(.command) else {
                 return false
             }
 
