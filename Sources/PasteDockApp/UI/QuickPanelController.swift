@@ -98,7 +98,7 @@ final class QuickPanelController: NSWindowController, NSWindowDelegate {
             appModel.moveSelection(offset: -1)
             return true
         case 53:
-            appModel.closeQuickPanel()
+            appModel.closeQuickPanel(restoreFocus: true)
             return true
         case 51, 117:
             guard modifiers.contains(.command) else {

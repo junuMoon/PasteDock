@@ -4,6 +4,10 @@ struct QuickPanelView: View {
     @EnvironmentObject private var appModel: AppModel
     @FocusState private var isSearchFocused: Bool
     @State private var pendingScrollTask: Task<Void, Never>?
+    @State private var pendingPreviewTask: Task<Void, Never>?
+    @State private var previewedItemID: ClipboardItem.ID?
+
+    private let previewUpdateDelay: Duration = .milliseconds(75)
 
     private static let absoluteFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -19,6 +23,14 @@ struct QuickPanelView: View {
         )
     }
 
+    private var previewItem: ClipboardItem? {
+        guard let previewedItemID else {
+            return nil
+        }
+
+        return appModel.items.first(where: { $0.id == previewedItemID })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -31,12 +43,18 @@ struct QuickPanelView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             focusSearchField()
+            syncPreviewSelection(immediately: true)
         }
         .onDisappear {
             pendingScrollTask?.cancel()
+            pendingPreviewTask?.cancel()
         }
         .onChange(of: appModel.panelPresentationID) { _, _ in
             focusSearchField()
+            syncPreviewSelection(immediately: true)
+        }
+        .onChange(of: appModel.selectedItemID) { _, _ in
+            syncPreviewSelection(immediately: false)
         }
     }
 
@@ -110,7 +128,7 @@ struct QuickPanelView: View {
 
     private var rightPane: some View {
         ScrollView {
-            if let item = appModel.selectedItem {
+            if let item = previewItem {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Preview")
                         .font(.headline)
@@ -247,6 +265,30 @@ struct QuickPanelView: View {
             }
 
             proxy.scrollTo(selectedItemID, anchor: .center)
+        }
+    }
+
+    private func syncPreviewSelection(immediately: Bool) {
+        let selectedItemID = appModel.selectedItemID
+
+        pendingPreviewTask?.cancel()
+        if immediately || selectedItemID == nil {
+            previewedItemID = selectedItemID
+            return
+        }
+
+        pendingPreviewTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: previewUpdateDelay)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            previewedItemID = appModel.selectedItemID
         }
     }
 }

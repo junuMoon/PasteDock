@@ -84,14 +84,27 @@ final class AppModel: ObservableObject {
 
     func toggleQuickPanel() {
         if quickPanelController.isVisible {
-            closeQuickPanel()
+            closeQuickPanel(restoreFocus: true)
         } else {
             openQuickPanel()
         }
     }
 
-    func closeQuickPanel() {
+    func closeQuickPanel(restoreFocus: Bool = false) {
+        let targetApplication = restoreFocus ? lastKnownExternalApplication : nil
         quickPanelController.close()
+
+        guard let targetApplication,
+              targetApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              !targetApplication.isTerminated else {
+            return
+        }
+
+        Task { @MainActor in
+            await Task.yield()
+            targetApplication.unhide()
+            _ = targetApplication.activate(options: [.activateAllWindows])
+        }
     }
 
     func moveSelection(offset: Int) {
@@ -127,7 +140,7 @@ final class AppModel: ObservableObject {
         let now = Date()
         pasteboardService.setItem(item)
         updateItemUsage(itemID: item.id, now: now, directPaste: mode == .pasteNow)
-        closeQuickPanel()
+        closeQuickPanel(restoreFocus: mode == .copyOnly)
 
         if mode == .pasteNow {
             let targetApp = lastKnownExternalApplication
