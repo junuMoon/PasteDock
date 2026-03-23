@@ -5,9 +5,14 @@ struct QuickPanelView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var pendingScrollTask: Task<Void, Never>?
     @State private var pendingPreviewTask: Task<Void, Never>?
+    @State private var pendingFullTextPreviewTask: Task<Void, Never>?
     @State private var previewedItemID: ClipboardItem.ID?
+    @State private var fullTextPreviewItemID: ClipboardItem.ID?
 
     private let previewUpdateDelay: Duration = .milliseconds(75)
+    private let fullTextPreviewDelay: Duration = .milliseconds(220)
+    private let deferredPreviewCharacterThreshold = 4_000
+    private let deferredPreviewCharacterLimit = 1_600
 
     private static let absoluteFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -48,6 +53,7 @@ struct QuickPanelView: View {
         .onDisappear {
             pendingScrollTask?.cancel()
             pendingPreviewTask?.cancel()
+            pendingFullTextPreviewTask?.cancel()
         }
         .onChange(of: appModel.panelPresentationID) { _, _ in
             focusSearchField()
@@ -138,7 +144,10 @@ struct QuickPanelView: View {
                             if item.isImage, let image = appModel.previewImage(for: item) {
                                 imagePreview(image)
                             } else {
-                                textPreview(item.content)
+                                textPreview(
+                                    item.content,
+                                    showFullText: fullTextPreviewItemID == item.id || !requiresDeferredTextPreview(for: item)
+                                )
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -225,15 +234,26 @@ struct QuickPanelView: View {
         }
     }
 
-    private func textPreview(_ content: String) -> some View {
-        Text(content)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(nsColor: .textBackgroundColor))
-            )
+    private func textPreview(_ content: String, showFullText: Bool) -> some View {
+        let previewText = showFullText ? content : String(content.prefix(deferredPreviewCharacterLimit))
+        let trimmedCharacterCount = max(content.count - previewText.count, 0)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(previewText)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !showFullText, trimmedCharacterCount > 0 {
+                Text("Long text preview trimmed while navigating. Pause briefly to load the remaining \(trimmedCharacterCount) characters.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
     }
 
     private func imagePreview(_ image: NSImage) -> some View {
@@ -277,8 +297,10 @@ struct QuickPanelView: View {
         let selectedItemID = appModel.selectedItemID
 
         pendingPreviewTask?.cancel()
+        pendingFullTextPreviewTask?.cancel()
         if immediately || selectedItemID == nil {
             previewedItemID = selectedItemID
+            scheduleFullTextPreview(for: selectedItemID, immediately: immediately)
             return
         }
 
@@ -293,7 +315,54 @@ struct QuickPanelView: View {
                 return
             }
 
-            previewedItemID = appModel.selectedItemID
+            let nextPreviewedItemID = appModel.selectedItemID
+            previewedItemID = nextPreviewedItemID
+            scheduleFullTextPreview(for: nextPreviewedItemID, immediately: false)
         }
+    }
+
+    private func scheduleFullTextPreview(for itemID: ClipboardItem.ID?, immediately: Bool) {
+        pendingFullTextPreviewTask?.cancel()
+        fullTextPreviewItemID = nil
+
+        guard let itemID,
+              let item = appModel.items.first(where: { $0.id == itemID }) else {
+            return
+        }
+
+        guard !item.isImage else {
+            fullTextPreviewItemID = itemID
+            return
+        }
+
+        guard requiresDeferredTextPreview(for: item) else {
+            fullTextPreviewItemID = itemID
+            return
+        }
+
+        guard !immediately else {
+            fullTextPreviewItemID = itemID
+            return
+        }
+
+        pendingFullTextPreviewTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: fullTextPreviewDelay)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled,
+                  previewedItemID == itemID,
+                  appModel.selectedItemID == itemID else {
+                return
+            }
+
+            fullTextPreviewItemID = itemID
+        }
+    }
+
+    private func requiresDeferredTextPreview(for item: ClipboardItem) -> Bool {
+        !item.isImage && item.content.count > deferredPreviewCharacterThreshold
     }
 }
