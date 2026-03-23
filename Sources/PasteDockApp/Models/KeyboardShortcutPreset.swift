@@ -8,6 +8,14 @@ enum KeyboardShortcutPreset: String, Codable, CaseIterable, Identifiable {
     case commandOptionV
     case commandShiftSpace
 
+    static var allCases: [KeyboardShortcutPreset] {
+        [
+            .optionS,
+            .commandOptionV,
+            .commandShiftSpace,
+        ]
+    }
+
     var id: String { rawValue }
 
     var title: String {
