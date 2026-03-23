@@ -127,17 +127,23 @@ struct QuickPanelView: View {
     }
 
     private var rightPane: some View {
-        ScrollView {
+        Group {
             if let item = previewItem {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Preview")
                         .font(.headline)
 
-                    if item.isImage, let image = appModel.previewImage(for: item) {
-                        imagePreview(image)
-                    } else {
-                        textPreview(item.content)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            if item.isImage, let image = appModel.previewImage(for: item) {
+                                imagePreview(image)
+                            } else {
+                                textPreview(item.content)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                     VStack(alignment: .leading, spacing: 10) {
                         metadataRow("Content type", value: item.contentTypeLabel)
@@ -156,10 +162,9 @@ struct QuickPanelView: View {
                             )
                         }
                     }
-
-                    Spacer(minLength: 0)
                 }
                 .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Preview")
@@ -169,7 +174,7 @@ struct QuickPanelView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(24)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
