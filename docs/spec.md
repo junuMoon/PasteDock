@@ -46,7 +46,7 @@ Quick panel behavior:
 
 Keyboard behavior:
 
-- `Ctrl+S`: open or close the quick panel
+- `Alt+S`: open or close the quick panel
 - `Up` / `Down`: move selection
 - `Enter`: set clipboard and paste now
 - `Cmd+Enter`: set clipboard only

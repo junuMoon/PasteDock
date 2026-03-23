@@ -279,8 +279,8 @@ final class AppModel: ObservableObject {
     }
 
     private func migrateShortcutPreferenceIfNeeded() {
-        if settings.shortcutPreset == .commandShiftV {
-            settings.shortcutPreset = .controlS
+        if settings.shortcutPreset == .commandShiftV || settings.shortcutPreset == .controlS {
+            settings.shortcutPreset = .optionS
         }
     }
 

@@ -34,7 +34,7 @@ open PasteDock.xcodeproj
 
 ## Default Controls
 
-- `Ctrl+S`: open or close the quick panel
+- `Alt+S`: open or close the quick panel
 - `Up` / `Down`: move selection
 - `Enter`: paste now
 - `Cmd+Enter`: copy only

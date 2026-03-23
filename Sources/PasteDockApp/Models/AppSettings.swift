@@ -21,5 +21,5 @@ struct AppSettings: Codable {
     var retentionDays: Int = 30
     var capturePaused = false
     var excludedBundleIDs: [String] = []
-    var shortcutPreset: KeyboardShortcutPreset = .controlS
+    var shortcutPreset: KeyboardShortcutPreset = .optionS
 }
