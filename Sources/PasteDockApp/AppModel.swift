@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
+    private static let searchableTextCharacterLimit = 8_000
 
     @Published private(set) var launchDate = Date()
     @Published private(set) var items: [ClipboardItem]
@@ -174,13 +175,13 @@ final class AppModel: ObservableObject {
         guard let selected = selectedItem else { return }
         items.removeAll { $0.id == selected.id }
         schedulePersistState()
-        syncDerivedStateAfterItemMutation()
+        syncDerivedStateAfterItemMutation(searchIndexChange: .pruneOnly)
     }
 
     func clearHistory() {
         items.removeAll()
         schedulePersistState()
-        syncDerivedStateAfterItemMutation()
+        syncDerivedStateAfterItemMutation(searchIndexChange: .pruneOnly)
     }
 
     func toggleCapturePaused() {
@@ -201,14 +202,14 @@ final class AppModel: ObservableObject {
     func updateHistoryLimit(_ value: Int) {
         settings.maxHistoryItems = max(10, value)
         pruneAndSortItems()
-        syncDerivedStateAfterItemMutation()
+        syncDerivedStateAfterItemMutation(searchIndexChange: .pruneOnly)
         schedulePersistState()
     }
 
     func updateRetentionDays(_ value: Int) {
         settings.retentionDays = max(1, value)
         pruneAndSortItems()
-        syncDerivedStateAfterItemMutation()
+        syncDerivedStateAfterItemMutation(searchIndexChange: .pruneOnly)
         schedulePersistState()
     }
 
@@ -342,26 +343,28 @@ final class AppModel: ObservableObject {
 
     private func upsertItem(content: ClipboardCapturedContent, sourceApp: NSRunningApplication?, now: Date) {
         let hash = content.contentHash
+        let changedItemID: ClipboardItem.ID
 
         if let index = items.firstIndex(where: { $0.contentHash == hash }) {
+            changedItemID = items[index].id
             apply(content: content, to: &items[index])
             items[index].lastCopiedAt = now
             items[index].sourceAppName = sourceApp?.localizedName ?? items[index].sourceAppName
             items[index].sourceBundleID = sourceApp?.bundleIdentifier ?? items[index].sourceBundleID
         } else {
-            items.append(
-                makeClipboardItem(
-                    from: content,
-                    sourceApp: sourceApp,
-                    now: now,
-                    hash: hash
-                )
+            let newItem = makeClipboardItem(
+                from: content,
+                sourceApp: sourceApp,
+                now: now,
+                hash: hash
             )
+            changedItemID = newItem.id
+            items.append(newItem)
         }
 
         pruneAndSortItems()
         schedulePersistState()
-        syncDerivedStateAfterItemMutation()
+        syncDerivedStateAfterItemMutation(searchIndexChange: .update(itemID: changedItemID))
     }
 
     private func updateItemUsage(itemID: ClipboardItem.ID, now: Date, directPaste: Bool) {
@@ -376,7 +379,7 @@ final class AppModel: ObservableObject {
 
         pruneAndSortItems()
         schedulePersistState()
-        syncDerivedStateAfterItemMutation()
+        refreshDerivedState(preserveSelection: true)
     }
 
     private func makeClipboardItem(
@@ -444,8 +447,20 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func syncDerivedStateAfterItemMutation() {
-        rebuildSearchIndex()
+    private func syncDerivedStateAfterItemMutation(searchIndexChange: SearchIndexChange) {
+        switch searchIndexChange {
+        case .rebuild:
+            rebuildSearchIndex()
+        case .update(let itemID):
+            if let itemID,
+               let item = items.first(where: { $0.id == itemID }) {
+                normalizedSearchableTextByID[itemID] = Self.makeNormalizedSearchText(for: item)
+            }
+            pruneSearchIndex()
+        case .pruneOnly:
+            pruneSearchIndex()
+        }
+
         refreshDerivedState(preserveSelection: true)
     }
 
@@ -487,7 +502,32 @@ final class AppModel: ObservableObject {
     }
 
     private static func makeNormalizedSearchText(for item: ClipboardItem) -> String {
-        item.searchableText.lowercased()
+        let limitedContent = String(item.content.prefix(searchableTextCharacterLimit))
+
+        if item.isImage {
+            return [
+                limitedContent,
+                "image",
+                item.imageDimensionText ?? "",
+                item.sourceAppName ?? "",
+                item.sourceBundleID ?? "",
+            ]
+            .joined(separator: " ")
+            .lowercased()
+        }
+
+        return [
+            limitedContent,
+            item.sourceAppName ?? "",
+            item.sourceBundleID ?? "",
+        ]
+        .joined(separator: " ")
+        .lowercased()
+    }
+
+    private func pruneSearchIndex() {
+        let validItemIDs = Set(items.map(\.id))
+        normalizedSearchableTextByID = normalizedSearchableTextByID.filter { validItemIDs.contains($0.key) }
     }
 
     private func setSelectedItemID(_ id: ClipboardItem.ID?) {
@@ -519,6 +559,12 @@ final class AppModel: ObservableObject {
 
     private func selectFirstFilteredItem() {
         setSelectedItemID(filteredItems.first?.id)
+    }
+
+    private enum SearchIndexChange {
+        case rebuild
+        case update(itemID: ClipboardItem.ID?)
+        case pruneOnly
     }
 
     private func schedulePersistState() {
